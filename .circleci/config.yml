@@ -1,37 +1,60 @@
 version: 2.1
 
 jobs:
-  build:
-    working_directory: ~/circleci-python
+  unit_test:
     docker:
-      - image: "circleci/python:3.6.4"
+      - image: circleci/openjdk:11
     steps:
       - checkout
-      - run: python3 main.py
-  test:
-    working_directory: ~/circleci-python
+      - run:
+          name: Run Unit Tests
+          command: ./gradlew test
+
+  integration_test:
     docker:
-      - image: "circleci/python:3.6.4"
+      - image: circleci/mysql:5.7
     steps:
       - checkout
-      - run: python3 main-test.py
-  deployment:
-    working_directory: ~/circleci-python
+      - run:
+          name: Setup Database
+          command: |
+            mysql -e "CREATE DATABASE test_db;"
+      - run:
+          name: Run Integration Tests
+          command: ./gradlew integrationTest
+
+  functional_test:
     docker:
-      - image: "circleci/python:3.6.4"
+      - image: circleci/python:3.8
     steps:
-      - run: echo "deploy done!"
-  
-  
+      - checkout
+      - run:
+          name: Run Selenium Tests
+          command: python -m unittest discover tests/functional
+
+  deploy:
+    docker:
+      - image: circleci/node:14
+    steps:
+      - checkout
+      - run:
+          name: Deploy to Production
+          command: ./deploy.sh
+
 workflows:
-  build_and_test:
+  version: 2
+  test_and_deploy:
     jobs:
-      - build
-      - test:
+      - unit_test
+      - integration_test:
           requires:
-            - build
-      - deployment: 
+            - unit_test
+      - functional_test:
+          requires:
+            - integration_test
+      - deploy:
+          requires:
+            - functional_test
           filters:
             branches:
-              only:
-                - master
+              only: main
